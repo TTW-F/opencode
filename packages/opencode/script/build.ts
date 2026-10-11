@@ -113,26 +113,42 @@ const allTargets: {
   },
 ]
 
-const targets = singleFlag
-  ? allTargets.filter((item) => {
-      if (item.os !== process.platform || item.arch !== process.arch) {
-        return false
-      }
+// [cs-fork] 目标裁剪:--targets=linux-x64,win32-x64 只编译指定目标(默认全量,与上游一致)
+const targetsFilter = (process.env.CS_FORK_TARGETS ?? "")
+  .split(",")
+  .map((s) => s.trim())
+  .filter(Boolean)
 
-      // When building for the current platform, prefer a single native binary by default.
-      // Baseline binaries require additional Bun artifacts and can be flaky to download.
-      if (item.avx2 === false) {
-        return baselineFlag
-      }
+const targets = (
+  singleFlag
+    ? allTargets.filter((item) => {
+        if (item.os !== process.platform || item.arch !== process.arch) {
+          return false
+        }
 
-      // also skip abi-specific builds for the same reason
-      if (item.abi !== undefined) {
-        return false
-      }
+        // When building for the current platform, prefer a single native binary by default.
+        // Baseline binaries require additional Bun artifacts and can be flaky to download.
+        if (item.avx2 === false) {
+          return baselineFlag
+        }
 
-      return true
-    })
-  : allTargets
+        // also skip abi-specific builds for the same reason
+        if (item.abi !== undefined) {
+          return false
+        }
+
+        return true
+      })
+    : allTargets
+).filter((item) => {
+  if (targetsFilter.length === 0) return true
+  const name = [item.os === "win32" ? "win32" : item.os, item.arch, item.abi].filter(Boolean).join("-")
+  return targetsFilter.includes(name)
+})
+
+if (targetsFilter.length > 0) {
+  console.log(`[cs-fork] 构建目标: ${targets.map((t) => `${t.os}-${t.arch}`).join(", ")} (共 ${targets.length} 个)`)
+}
 
 await $`rm -rf dist`
 
